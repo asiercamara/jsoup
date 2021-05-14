@@ -310,7 +310,8 @@ public final class CharacterReader {
         bufPos = pos;
         return pos > start ? cacheString(charBuf, stringCache, start, pos -start) : "";
     }
-
+ 
+   
     String consumeAttributeQuoted(final boolean single) {
         // null, " or ', &
         //bufferUp(); // no need to bufferUp, just called consume()
@@ -318,6 +319,7 @@ public final class CharacterReader {
         final int start = pos;
         final int remaining = bufLength;
         final char[] val = charBuf;
+        boolean jstlTagDetected = false;
 
         OUTER: while (pos < remaining) {
             switch (val[pos]) {
@@ -325,9 +327,23 @@ public final class CharacterReader {
                 case TokeniserState.nullChar:
                     break OUTER;
                 case '\'':
-                    if (single) break OUTER;
+                    if (!jstlTagDetected)
+                    	if (single) break OUTER;
+                    pos++;
+                    break;
                 case '"':
-                    if (!single) break OUTER;
+                    if (!jstlTagDetected)
+                        if (!single) break OUTER;
+                    pos++;
+                    break;
+                case '<':
+                	jstlTagDetected = true;
+                	pos++;
+                	break;
+                case '>':
+                	jstlTagDetected = false;
+                	pos++;
+                	break;
                 default:
                     pos++;
             }

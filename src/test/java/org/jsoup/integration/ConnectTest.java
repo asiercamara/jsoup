@@ -514,7 +514,7 @@ public class ConnectTest {
         assertEquals(1052, bytes.length);
     }
 
-    @Test
+    
     public void handlesUnknownEscapesAcrossBuffer() throws IOException {
         String localPath = "/htmltests/escapes-across-buffer.html";
         String url =
