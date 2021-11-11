@@ -1,6 +1,7 @@
 package org.jsoup.select;
 
 import org.jsoup.helper.Validate;
+import org.jsoup.internal.StringUtil;
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.DocumentType;
@@ -16,6 +17,7 @@ import java.util.regex.Pattern;
 
 import static org.jsoup.internal.Normalizer.lowerCase;
 import static org.jsoup.internal.Normalizer.normalize;
+import static org.jsoup.internal.StringUtil.normaliseWhitespace;
 
 
 /**
@@ -665,7 +667,7 @@ public abstract class Evaluator {
         private final String searchText;
 
         public ContainsText(String searchText) {
-            this.searchText = lowerCase(searchText);
+            this.searchText = lowerCase(normaliseWhitespace(searchText));
         }
 
         @Override
@@ -676,6 +678,29 @@ public abstract class Evaluator {
         @Override
         public String toString() {
             return String.format(":contains(%s)", searchText);
+        }
+    }
+
+    /**
+     * Evaluator for matching Element (and its descendants) wholeText. Neither the input nor the element text is
+     * normalized. <code>:containsWholeText()</code>
+     * @since 1.15.1.
+     */
+    public static final class ContainsWholeText extends Evaluator {
+        private final String searchText;
+
+        public ContainsWholeText(String searchText) {
+            this.searchText = searchText;
+        }
+
+        @Override
+        public boolean matches(Element root, Element element) {
+            return element.wholeText().contains(searchText);
+        }
+
+        @Override
+        public String toString() {
+            return String.format(":containsWholeText(%s)", searchText);
         }
     }
 
@@ -691,7 +716,7 @@ public abstract class Evaluator {
 
         @Override
         public boolean matches(Element root, Element element) {
-            return lowerCase(element.data()).contains(searchText);
+            return lowerCase(element.data()).contains(searchText); // not whitespace normalized
         }
 
         @Override
@@ -707,7 +732,7 @@ public abstract class Evaluator {
         private final String searchText;
 
         public ContainsOwnText(String searchText) {
-            this.searchText = lowerCase(searchText);
+            this.searchText = lowerCase(normaliseWhitespace(searchText));
         }
 
         @Override

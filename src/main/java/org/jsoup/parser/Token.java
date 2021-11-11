@@ -3,6 +3,8 @@ package org.jsoup.parser;
 import org.jsoup.helper.Validate;
 import org.jsoup.nodes.Attributes;
 
+import javax.annotation.Nullable;
+
 import static org.jsoup.internal.Normalizer.lowerCase;
 
 /**
@@ -70,57 +72,78 @@ abstract class Token {
         public boolean isForceQuirks() {
             return forceQuirks;
         }
+
+        @Override
+        public String toString() {
+            return "<!doctype " + getName() + ">";
+        }
     }
 
     static abstract class Tag extends Token {
-        protected String tagName;
-        protected String normalName; // lc version of tag name, for case insensitive tree build
-        private String pendingAttributeName; // attribute names are generally caught in one hop, not accumulated
-        private StringBuilder pendingAttributeValue = new StringBuilder(); // but values are accumulated, from e.g. & in hrefs
-        private String pendingAttributeValueS; // try to get attr vals in one shot, vs Builder
-        private boolean hasEmptyAttributeValue = false; // distinguish boolean attribute from empty string value
-        private boolean hasPendingAttributeValue = false;
+        @Nullable protected String tagName;
+        @Nullable protected String normalName; // lc version of tag name, for case insensitive tree build
+
+        private final StringBuilder attrName = new StringBuilder(); // try to get attr names and vals in one shot, vs Builder
+        @Nullable private String attrNameS;
+        private boolean hasAttrName = false;
+
+        private final StringBuilder attrValue = new StringBuilder();
+        @Nullable private String attrValueS;
+        private boolean hasAttrValue = false;
+        private boolean hasEmptyAttrValue = false; // distinguish boolean attribute from empty string value
+
         boolean selfClosing = false;
-        Attributes attributes; // start tags get attributes on construction. End tags get attributes on first new attribute (but only for parser convenience, not used).
+        @Nullable Attributes attributes; // start tags get attributes on construction. End tags get attributes on first new attribute (but only for parser convenience, not used).
 
         @Override
         Tag reset() {
             tagName = null;
             normalName = null;
-            pendingAttributeName = null;
-            reset(pendingAttributeValue);
-            pendingAttributeValueS = null;
-            hasEmptyAttributeValue = false;
-            hasPendingAttributeValue = false;
+            reset(attrName);
+            attrNameS = null;
+            hasAttrName = false;
+            reset(attrValue);
+            attrValueS = null;
+            hasEmptyAttrValue = false;
+            hasAttrValue = false;
             selfClosing = false;
             attributes = null;
             return this;
         }
 
+        /* Limits runaway crafted HTML from spewing attributes and getting a little sluggish in ensureCapacity.
+        Real-world HTML will P99 around 8 attributes, so plenty of headroom. Implemented here and not in the Attributes
+        object so that API users can add more if ever required. */
+        private static final int MaxAttributes = 512;
+
         final void newAttribute() {
             if (attributes == null)
                 attributes = new Attributes();
 
-            if (pendingAttributeName != null) {
+            if (hasAttrName && attributes.size() < MaxAttributes) {
                 // the tokeniser has skipped whitespace control chars, but trimming could collapse to empty for other control codes, so verify here
-                pendingAttributeName = pendingAttributeName.trim();
-                if (pendingAttributeName.length() > 0) {
+                String name = attrName.length() > 0 ? attrName.toString() : attrNameS;
+                name = name.trim();
+                if (name.length() > 0) {
                     String value;
-                    if (hasPendingAttributeValue)
-                        value = pendingAttributeValue.length() > 0 ? pendingAttributeValue.toString() : pendingAttributeValueS;
-                    else if (hasEmptyAttributeValue)
+                    if (hasAttrValue)
+                        value = attrValue.length() > 0 ? attrValue.toString() : attrValueS;
+                    else if (hasEmptyAttrValue)
                         value = "";
                     else
                         value = null;
                     // note that we add, not put. So that the first is kept, and rest are deduped, once in a context where case sensitivity is known (the appropriate tree builder).
-                    attributes.add(pendingAttributeName, value);
+                    attributes.add(name, value);
                 }
             }
-            pendingAttributeName = null;
-            hasEmptyAttributeValue = false;
-            hasPendingAttributeValue = false;
-            reset(pendingAttributeValue);
-            pendingAttributeValueS = null;
+            reset(attrName);
+            attrNameS = null;
+            hasAttrName = false;
+
+            reset(attrValue);
+            attrValueS = null;
+            hasAttrValue = false;
+            hasEmptyAttrValue = false;
         }
 
         final boolean hasAttributes() {
@@ -133,7 +156,7 @@ abstract class Token {
 
         final void finaliseTag() {
             // finalises for emit
-            if (pendingAttributeName != null) {
+            if (hasAttrName) {
                 newAttribute();
             }
         }
@@ -155,7 +178,7 @@ abstract class Token {
 
         final Tag name(String name) {
             tagName = name;
-            normalName = lowerCase(name);
+            normalName = ParseSettings.normalName(tagName);
             return this;
         }
 
@@ -165,8 +188,10 @@ abstract class Token {
 
         // these appenders are rarely hit in not null state-- caused by null chars.
         final void appendTagName(String append) {
+            // might have null chars - need to replace with null replacement character
+            append = append.replace(TokeniserState.nullChar, Tokeniser.replacementChar);
             tagName = tagName == null ? append : tagName.concat(append);
-            normalName = lowerCase(tagName);
+            normalName = ParseSettings.normalName(tagName);
         }
 
         final void appendTagName(char append) {
@@ -174,49 +199,67 @@ abstract class Token {
         }
 
         final void appendAttributeName(String append) {
-            pendingAttributeName = pendingAttributeName == null ? append : pendingAttributeName.concat(append);
+            // might have null chars because we eat in one pass - need to replace with null replacement character
+            append = append.replace(TokeniserState.nullChar, Tokeniser.replacementChar);
+
+            ensureAttrName();
+            if (attrName.length() == 0) {
+                attrNameS = append;
+            } else {
+                attrName.append(append);
+            }
         }
 
         final void appendAttributeName(char append) {
-            appendAttributeName(String.valueOf(append));
+            ensureAttrName();
+            attrName.append(append);
         }
 
         final void appendAttributeValue(String append) {
-            ensureAttributeValue();
-            if (pendingAttributeValue.length() == 0) {
-                pendingAttributeValueS = append;
+            ensureAttrValue();
+            if (attrValue.length() == 0) {
+                attrValueS = append;
             } else {
-                pendingAttributeValue.append(append);
+                attrValue.append(append);
             }
         }
 
         final void appendAttributeValue(char append) {
-            ensureAttributeValue();
-            pendingAttributeValue.append(append);
+            ensureAttrValue();
+            attrValue.append(append);
         }
 
         final void appendAttributeValue(char[] append) {
-            ensureAttributeValue();
-            pendingAttributeValue.append(append);
+            ensureAttrValue();
+            attrValue.append(append);
         }
 
         final void appendAttributeValue(int[] appendCodepoints) {
-            ensureAttributeValue();
+            ensureAttrValue();
             for (int codepoint : appendCodepoints) {
-                pendingAttributeValue.appendCodePoint(codepoint);
+                attrValue.appendCodePoint(codepoint);
             }
         }
         
         final void setEmptyAttributeValue() {
-            hasEmptyAttributeValue = true;
+            hasEmptyAttrValue = true;
         }
 
-        private void ensureAttributeValue() {
-            hasPendingAttributeValue = true;
+        private void ensureAttrName() {
+            hasAttrName = true;
             // if on second hit, we'll need to move to the builder
-            if (pendingAttributeValueS != null) {
-                pendingAttributeValue.append(pendingAttributeValueS);
-                pendingAttributeValueS = null;
+            if (attrNameS != null) {
+                attrName.append(attrNameS);
+                attrNameS = null;
+            }
+        }
+
+        private void ensureAttrValue() {
+            hasAttrValue = true;
+            // if on second hit, we'll need to move to the builder
+            if (attrValueS != null) {
+                attrValue.append(attrValueS);
+                attrValueS = null;
             }
         }
 
@@ -240,7 +283,7 @@ abstract class Token {
         StartTag nameAttr(String name, Attributes attributes) {
             this.tagName = name;
             this.attributes = attributes;
-            normalName = lowerCase(tagName);
+            normalName = ParseSettings.normalName(tagName);
             return this;
         }
 

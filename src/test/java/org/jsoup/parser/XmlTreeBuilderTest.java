@@ -153,6 +153,16 @@ public class XmlTreeBuilderTest {
     }
 
     @Test
+    public void testParseDeclarationWithoutAttributes() {
+        String xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<?myProcessingInstruction My Processing instruction.?>";
+        Document doc = Jsoup.parse(xml, "", Parser.xmlParser());
+        XmlDeclaration decl = (XmlDeclaration) doc.childNode(2);
+        assertEquals("myProcessingInstruction", decl.name());
+        assertTrue(decl.hasAttr("My"));
+        assertEquals("<?myProcessingInstruction My Processing instruction.?>", decl.outerHtml());
+    }
+
+    @Test
     public void caseSensitiveDeclaration() {
         String xml = "<?XML version='1' encoding='UTF-8' something='else'?>";
         Document doc = Jsoup.parse(xml, "", Parser.xmlParser());
@@ -262,4 +272,46 @@ public class XmlTreeBuilderTest {
         assertNull(treeBuilder.tokeniser);
     }
 
+    @Test public void xmlParserEnablesXmlOutputAndEscapes() {
+        // Test that when using the XML parser, the output mode and escape mode default to XHTML entities
+        // https://github.com/jhy/jsoup/issues/1420
+        Document doc = Jsoup.parse("<p one='&lt;two&gt;&copy'>Three</p>", "", Parser.xmlParser());
+        assertEquals(doc.outputSettings().syntax(), Syntax.xml);
+        assertEquals(doc.outputSettings().escapeMode(), Entities.EscapeMode.xhtml);
+        assertEquals("<p one=\"&lt;two>©\">Three</p>", doc.html()); // only the < should be escaped
+    }
+
+    @Test public void xmlSyntaxEscapesLtInAttributes() {
+        // Regardless of the entity escape mode, make sure < is escaped in attributes when in XML
+        Document doc = Jsoup.parse("<p one='&lt;two&gt;&copy'>Three</p>", "", Parser.xmlParser());
+        doc.outputSettings().escapeMode(Entities.EscapeMode.extended);
+        doc.outputSettings().charset("ascii"); // to make sure &copy; is output
+        assertEquals(doc.outputSettings().syntax(), Syntax.xml);
+        assertEquals("<p one=\"&lt;two>&copy;\">Three</p>", doc.html());
+    }
+
+    @Test void xmlOutputCorrectsInvalidAttributeNames() {
+        String xml = "<body style=\"color: red\" \" name\"><div =\"\"></div></body>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        assertEquals(Syntax.xml, doc.outputSettings().syntax());
+
+        String out = doc.html();
+        assertEquals("<body style=\"color: red\" name=\"\"><div></div></body>", out);
+    }
+
+    @Test void customTagsAreFlyweights() {
+        String xml = "<foo>Foo</foo><foo>Foo</foo><FOO>FOO</FOO><FOO>FOO</FOO>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        Elements els = doc.children();
+
+        Tag t1 = els.get(0).tag();
+        Tag t2 = els.get(1).tag();
+        Tag t3 = els.get(2).tag();
+        Tag t4 = els.get(3).tag();
+        assertEquals("foo", t1.getName());
+        assertEquals("FOO", t3.getName());
+        assertSame(t1, t2);
+        assertSame(t3, t4);
+
+    }
 }

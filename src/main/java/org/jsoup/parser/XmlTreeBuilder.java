@@ -6,6 +6,7 @@ import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.DocumentType;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Entities;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.nodes.XmlDeclaration;
@@ -33,6 +34,7 @@ public class XmlTreeBuilder extends TreeBuilder {
         stack.add(doc); // place the document onto the stack. differs from HtmlTreeBuilder (not on stack)
         doc.outputSettings()
             .syntax(Document.OutputSettings.Syntax.xml)
+            .escapeMode(Entities.EscapeMode.xhtml)
             .prettyPrint(false); // as XML, we don't understand what whitespace is significant or not
     }
 
@@ -81,7 +83,7 @@ public class XmlTreeBuilder extends TreeBuilder {
     }
 
     Element insert(Token.StartTag startTag) {
-        Tag tag = Tag.valueOf(startTag.name(), settings);
+        Tag tag = tagFor(startTag.name(), settings);
         // todo: wonder if for xml parsing, should treat all tags as unknown? because it's not html.
         if (startTag.hasAttributes())
             startTag.attributes.deduplicate(settings);
@@ -128,10 +130,14 @@ public class XmlTreeBuilder extends TreeBuilder {
      * @param endTag tag to close
      */
     private void popStackToClose(Token.EndTag endTag) {
+        // like in HtmlTreeBuilder - don't scan up forever for very (artificially) deeply nested stacks
         String elName = settings.normalizeTag(endTag.tagName);
         Element firstFound = null;
 
-        for (int pos = stack.size() -1; pos >= 0; pos--) {
+        final int bottom = stack.size() - 1;
+        final int upper = bottom >= maxQueueDepth ? bottom - maxQueueDepth : 0;
+
+        for (int pos = stack.size() -1; pos >= upper; pos--) {
             Element next = stack.get(pos);
             if (next.nodeName().equals(elName)) {
                 firstFound = next;
@@ -148,6 +154,8 @@ public class XmlTreeBuilder extends TreeBuilder {
                 break;
         }
     }
+    private static final int maxQueueDepth = 256; // an arbitrary tension point between real XML and crafted pain
+
 
 
     List<Node> parseFragment(String inputFragment, String baseUri, Parser parser) {

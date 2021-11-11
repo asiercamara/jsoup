@@ -25,7 +25,7 @@ import static org.jsoup.internal.Normalizer.lowerCase;
  * Attributes are treated as a map: there can be only one value associated with an attribute key/name.
  * </p>
  * <p>
- * Attribute name and value comparisons are  generally <b>case sensitive</b>. By default for HTML, attribute names are
+ * Attribute name and value comparisons are generally <b>case sensitive</b>. By default for HTML, attribute names are
  * normalized to lower-case on parsing. That means you should use lower-case strings when referring to attributes by
  * name.
  * </p>
@@ -46,6 +46,7 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
     static final int NotFound = -1;
     private static final String EmptyString = "";
 
+    // the number of instance fields is kept as low as possible giving an object size of 24 bytes
     private int size = 0; // number of slots used (not total capacity, which is keys.length)
     String[] keys = new String[InitialCapacity];
     String[] vals = new String[InitialCapacity];
@@ -126,7 +127,7 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
      * @param value attribute value (may be null, to set a boolean attribute)
      * @return these attributes, for chaining
      */
-    public Attributes put(String key, String value) {
+    public Attributes put(String key, @Nullable String value) {
         Validate.notNull(key);
         int i = indexOfKey(key);
         if (i != NotFound)
@@ -246,16 +247,12 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
     }
 
     /**
-     Get the number of attributes in this set.
+     Get the number of attributes in this set, including any jsoup internal-only attributes. Internal attributes are
+     excluded from the {@link #html()}, {@link #asList()}, and {@link #iterator()} methods.
      @return size
      */
     public int size() {
-        int s = 0;
-        for (int i = 0; i < size; i++) {
-            if (!isInternalKey(keys[i]))
-                s++;
-        }
-        return s;
+        return size;
     }
 
     /**
@@ -278,7 +275,6 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
             // todo - should this be case insensitive?
             put(attr);
         }
-
     }
 
     public Iterator<Attribute> iterator() {
@@ -354,18 +350,9 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
         for (int i = 0; i < sz; i++) {
             if (isInternalKey(keys[i]))
                 continue;
-
-            // inlined from Attribute.html()
-            final String key = keys[i];
-            final String val = vals[i];
-            accum.append(' ').append(key);
-
-            // collapse checked=null, checked="", checked=checked; write out others
-            if (!Attribute.shouldCollapseAttribute(key, val, out)) {
-                accum.append("=\"");
-                Entities.escape(accum, val == null ? EmptyString : val, out, true, false, false);
-                accum.append('"');
-            }
+            final String key = Attribute.getValidKey(keys[i], out.syntax());
+            if (key != null)
+                Attribute.htmlNoValidate(key, vals[i], accum.append(' '), out);
         }
     }
 
@@ -375,20 +362,32 @@ public class Attributes implements Iterable<Attribute>, Cloneable {
     }
 
     /**
-     * Checks if these attributes are equal to another set of attributes, by comparing the two sets
+     * Checks if these attributes are equal to another set of attributes, by comparing the two sets. Note that the order
+     * of the attributes does not impact this equality (as per the Map interface equals()).
      * @param o attributes to compare with
      * @return if both sets of attributes have the same content
      */
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@Nullable Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
         Attributes that = (Attributes) o;
-
         if (size != that.size) return false;
-        if (!Arrays.equals(keys, that.keys)) return false;
-        return Arrays.equals(vals, that.vals);
+        for (int i = 0; i < size; i++) {
+            String key = keys[i];
+            int thatI = that.indexOfKey(key);
+            if (thatI == NotFound)
+                return false;
+            String val = vals[i];
+            String thatVal = that.vals[thatI];
+            if (val == null) {
+                if (thatVal != null)
+                    return false;
+            } else if (!val.equals(thatVal))
+                return false;
+        }
+        return true;
     }
 
     /**

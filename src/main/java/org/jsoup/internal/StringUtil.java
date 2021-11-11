@@ -9,17 +9,17 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Stack;
+import java.util.regex.Pattern;
 
 /**
  A minimal String utility class. Designed for <b>internal</b> jsoup use only - the API and outcome may change without
  notice.
  */
 public final class StringUtil {
-    // memoised padding up to 21
+    // memoised padding up to 21 (blocks 0 to 20 spaces)
     static final String[] padding = {"", " ", "  ", "   ", "    ", "     ", "      ", "       ", "        ",
         "         ", "          ", "           ", "            ", "             ", "              ", "               ",
         "                ", "                 ", "                  ", "                   ", "                    "};
-    private static final int maxPaddingWidth = 30; // so very deeply nested nodes don't get insane padding amounts
 
     /**
      * Join a collection of strings by a separator
@@ -114,17 +114,28 @@ public final class StringUtil {
     }
 
     /**
-     * Returns space padding (up to a max of 30).
+     * Returns space padding (up to the default max of 30). Use {@link #padding(int, int)} to specify a different limit.
      * @param width amount of padding desired
      * @return string of spaces * width
-     */
+     * @see #padding(int, int) 
+      */
     public static String padding(int width) {
-        if (width < 0)
-            throw new IllegalArgumentException("width must be > 0");
+        return padding(width, 30);
+    }
 
+    /**
+     * Returns space padding, up to a max of maxPaddingWidth.
+     * @param width amount of padding desired
+     * @param maxPaddingWidth maximum padding to apply. Set to {@code -1} for unlimited.
+     * @return string of spaces * width
+     */
+    public static String padding(int width, int maxPaddingWidth) {
+        Validate.isTrue(width >= 0, "width must be >= 0");
+        Validate.isTrue(maxPaddingWidth >= -1);
+        if (maxPaddingWidth != -1)
+            width = Math.min(width, maxPaddingWidth);
         if (width < padding.length)
-            return padding[width];
-        width = Math.min(width, maxPaddingWidth);
+            return padding[width];        
         char[] out = new char[width];
         for (int i = 0; i < width; i++)
             out[i] = ' ';
@@ -192,7 +203,7 @@ public final class StringUtil {
 
     /**
      * Normalise the whitespace within this string; multiple spaces collapse to a single, and all whitespace characters
-     * (e.g. newline, tab) convert to a simple space
+     * (e.g. newline, tab) convert to a simple space.
      * @param string content to normalise
      * @return normalised string
      */
@@ -259,6 +270,7 @@ public final class StringUtil {
         return true;
     }
 
+    private static final Pattern extraDotSegmentsPattern = Pattern.compile("^/((\\.{1,2}/)+)");
     /**
      * Create a new absolute URL, from a provided existing absolute URL and a relative URL component.
      * @param base the existing absolute base URL
@@ -271,10 +283,12 @@ public final class StringUtil {
         if (relUrl.startsWith("?"))
             relUrl = base.getPath() + relUrl;
         // workaround: //example.com + ./foo = //example.com/./foo, not //example.com/foo
-        if (relUrl.indexOf('.') == 0 && base.getFile().indexOf('/') != 0) {
-            base = new URL(base.getProtocol(), base.getHost(), base.getPort(), "/" + base.getFile());
+        URL url = new URL(base, relUrl);
+        String fixedFile = extraDotSegmentsPattern.matcher(url.getFile()).replaceFirst("/");
+        if (url.getRef() != null) {
+            fixedFile = fixedFile + "#" + url.getRef();
         }
-        return new URL(base, relUrl);
+        return new URL(url.getProtocol(), url.getHost(), url.getPort(), fixedFile);
     }
 
     /**
@@ -284,8 +298,8 @@ public final class StringUtil {
      * @return an absolute URL if one was able to be generated, or the empty string if not
      */
     public static String resolve(final String baseUrl, final String relUrl) {
-        URL base;
         try {
+            URL base;
             try {
                 base = new URL(baseUrl);
             } catch (MalformedURLException e) {
@@ -295,9 +309,12 @@ public final class StringUtil {
             }
             return resolve(base, relUrl).toExternalForm();
         } catch (MalformedURLException e) {
-            return "";
+            // it may still be valid, just that Java doesn't have a registered stream handler for it, e.g. tel
+            // we test here vs at start to normalize supported URLs (e.g. HTTP -> http)
+            return validUriScheme.matcher(relUrl).find() ? relUrl : "";
         }
     }
+    private static final Pattern validUriScheme = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+-.]*:");
 
     private static final ThreadLocal<Stack<StringBuilder>> threadLocalBuilders = new ThreadLocal<Stack<StringBuilder>>() {
         @Override

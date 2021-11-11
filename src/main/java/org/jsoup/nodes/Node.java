@@ -87,6 +87,16 @@ public abstract class Node implements Cloneable {
     public abstract Attributes attributes();
 
     /**
+     Get the number of attributes that this Node has.
+     @return the number of attributes
+     @since 1.14.2
+     */
+    public int attributesSize() {
+        // added so that we can test how many attributes exist without implicitly creating the Attributes object
+        return hasAttributes() ? attributes().size() : 0;
+    }
+
+    /**
      * Set an attribute (key=value). If the attribute already exists, it is replaced. The attribute key comparison is
      * <b>case insensitive</b>. The key will be set with case sensitivity as set in the parser settings.
      * @param attributeKey The attribute key.
@@ -100,7 +110,7 @@ public abstract class Node implements Cloneable {
     }
 
     /**
-     * Test if this element has an attribute. <b>Case insensitive</b>
+     * Test if this Node has an attribute. <b>Case insensitive</b>.
      * @param attributeKey The attribute key to check.
      * @return true if the attribute exists, false if not.
      */
@@ -111,7 +121,7 @@ public abstract class Node implements Cloneable {
 
         if (attributeKey.startsWith("abs:")) {
             String key = attributeKey.substring("abs:".length());
-            if (attributes().hasKeyIgnoreCase(key) && !absUrl(key).equals(""))
+            if (attributes().hasKeyIgnoreCase(key) && !absUrl(key).isEmpty())
                 return true;
         }
         return attributes().hasKeyIgnoreCase(attributeKey);
@@ -193,12 +203,10 @@ public abstract class Node implements Cloneable {
      */
     public String absUrl(String attributeKey) {
         Validate.notEmpty(attributeKey);
+        if (!(hasAttributes() && attributes().hasKeyIgnoreCase(attributeKey))) // not using hasAttr, so that we don't recurse down hasAttr->absUrl
+            return "";
 
-        if (!hasAttr(attributeKey)) {
-            return ""; // nothing to make absolute with
-        } else {
-            return StringUtil.resolve(baseUri(), attr(attributeKey));
-        }
+        return StringUtil.resolve(baseUri(), attributes().getIgnoreCase(attributeKey));
     }
 
     protected abstract List<Node> ensureChildNodes();
@@ -512,13 +520,15 @@ public abstract class Node implements Cloneable {
                 }
             }
             if (sameList) { // moving, so OK to empty firstParent and short-circuit
+                boolean wasEmpty = childNodeSize() == 0;
                 firstParent.empty();
                 nodes.addAll(index, Arrays.asList(children));
                 i = children.length;
                 while (i-- > 0) {
                     children[i].parentNode = this;
                 }
-                reindexChildren(index);
+                if (!(wasEmpty && children[0].siblingIndex == 0)) // skip reindexing if we just moved
+                    reindexChildren(index);
                 return;
             }
         }
@@ -536,6 +546,7 @@ public abstract class Node implements Cloneable {
     }
 
     private void reindexChildren(int start) {
+        if (childNodeSize() == 0) return;
         final List<Node> childNodes = ensureChildNodes();
 
         for (int i = start; i < childNodes.size(); i++) {
@@ -672,7 +683,7 @@ public abstract class Node implements Cloneable {
     }
 
     protected void indent(Appendable accum, int depth, Document.OutputSettings out) throws IOException {
-        accum.append('\n').append(StringUtil.padding(depth * out.indentAmount()));
+        accum.append('\n').append(StringUtil.padding(depth * out.indentAmount(), out.maxPaddingWidth()));
     }
 
     /**
@@ -683,9 +694,20 @@ public abstract class Node implements Cloneable {
      * @see Node#hasSameValue(Object)
      */
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@Nullable Object o) {
         // implemented just so that javadoc is clear this is an identity test
         return this == o;
+    }
+
+    /**
+     Provides a hashCode for this Node, based on it's object identity. Changes to the Node's content will not impact the
+     result.
+     @return an object identity based hashcode for this Node
+     */
+    @Override
+    public int hashCode() {
+        // implemented so that javadoc and scanners are clear this is an identity test
+        return super.hashCode();
     }
 
     /**
@@ -710,6 +732,7 @@ public abstract class Node implements Cloneable {
      * @return a stand-alone cloned node, including clones of any children
      * @see #shallowClone()
      */
+    @SuppressWarnings("MethodDoesntCallSuperMethod") // because it does call super.clone in doClone - analysis just isn't following
     @Override
     public Node clone() {
         Node thisClone = doClone(null); // splits for orphan

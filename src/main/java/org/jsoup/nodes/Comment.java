@@ -1,6 +1,6 @@
 package org.jsoup.nodes;
 
-import org.jsoup.Jsoup;
+import org.jsoup.parser.ParseSettings;
 import org.jsoup.parser.Parser;
 
 import javax.annotation.Nullable;
@@ -63,6 +63,10 @@ public class Comment extends LeafNode {
      */
     public boolean isXmlDeclaration() {
         String data = getData();
+        return isXmlDeclarationData(data);
+    }
+
+    private static boolean isXmlDeclarationData(String data) {
         return (data.length() > 1 && (data.startsWith("!") || data.startsWith("?")));
     }
 
@@ -72,10 +76,18 @@ public class Comment extends LeafNode {
      */
     public @Nullable XmlDeclaration asXmlDeclaration() {
         String data = getData();
-        Document doc = Jsoup.parse("<" + data.substring(1, data.length() -1) + ">", baseUri(), Parser.xmlParser());
+
         XmlDeclaration decl = null;
-        if (doc.children().size() > 0) {
-            Element el = doc.child(0);
+        String declContent = data.substring(1, data.length() - 1);
+        // make sure this bogus comment is not immediately followed by another, treat as comment if so
+        if (isXmlDeclarationData(declContent))
+            return null;
+
+        String fragment = "<" + declContent + ">";
+        // use the HTML parser not XML, so we don't get into a recursive XML Declaration on contrived data
+        Document doc = Parser.htmlParser().settings(ParseSettings.preserveCase).parseInput(fragment, baseUri());
+        if (doc.body().children().size() > 0) {
+            Element el = doc.body().child(0);
             decl = new XmlDeclaration(NodeUtils.parser(doc).settings().normalizeTag(el.tagName()), data.startsWith("!"));
             decl.attributes().addAll(el.attributes());
         }

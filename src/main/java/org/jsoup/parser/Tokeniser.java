@@ -4,6 +4,7 @@ import org.jsoup.helper.Validate;
 import org.jsoup.internal.StringUtil;
 import org.jsoup.nodes.Entities;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
@@ -46,6 +47,7 @@ final class Tokeniser {
     Token.Doctype doctypePending = new Token.Doctype(); // doctype building up
     Token.Comment commentPending = new Token.Comment(); // comment building up
     private String lastStartTag; // the last start tag emitted, to test appropriate end tag
+    @Nullable private String lastStartCloseSeq; // "</" + lastStartTag, so we can quickly check for that in RCData
 
     Tokeniser(CharacterReader reader, ParseErrorList errors) {
         this.reader = reader;
@@ -83,10 +85,11 @@ final class Tokeniser {
         if (token.type == Token.TokenType.StartTag) {
             Token.StartTag startTag = (Token.StartTag) token;
             lastStartTag = startTag.tagName;
+            lastStartCloseSeq = null; // only lazy inits
         } else if (token.type == Token.TokenType.EndTag) {
             Token.EndTag endTag = (Token.EndTag) token;
             if (endTag.hasAttributes())
-                error("Attributes incorrectly present on end tag");
+                error("Attributes incorrectly present on end tag [/%s]", endTag.normalName());
         }
     }
 
@@ -152,7 +155,7 @@ final class Tokeniser {
 
     final private int[] codepointHolder = new int[1]; // holder to not have to keep creating arrays
     final private int[] multipointHolder = new int[2];
-    int[] consumeCharacterReference(Character additionalAllowedCharacter, boolean inAttribute) {
+    @Nullable int[] consumeCharacterReference(Character additionalAllowedCharacter, boolean inAttribute) {
         if (reader.isEmpty())
             return null;
         if (additionalAllowedCharacter != null && additionalAllowedCharacter == reader.current())
@@ -173,7 +176,7 @@ final class Tokeniser {
 
             reader.unmark();
             if (!reader.matchConsume(";"))
-                characterReferenceError("missing semicolon"); // missing semi
+                characterReferenceError("missing semicolon on [&#%s]", numRef); // missing semi
             int charval = -1;
             try {
                 int base = isHexMode ? 16 : 10;
@@ -181,12 +184,12 @@ final class Tokeniser {
             } catch (NumberFormatException ignored) {
             } // skip
             if (charval == -1 || (charval >= 0xD800 && charval <= 0xDFFF) || charval > 0x10FFFF) {
-                characterReferenceError("character outside of valid range");
+                characterReferenceError("character [%s] outside of valid range", charval);
                 codeRef[0] = replacementChar;
             } else {
                 // fix illegal unicode characters to match browser behavior
                 if (charval >= win1252ExtensionsStart && charval < win1252ExtensionsStart + win1252Extensions.length) {
-                    characterReferenceError("character is not a valid unicode code point");
+                    characterReferenceError("character [%s] is not a valid unicode code point", charval);
                     charval = win1252Extensions[charval - win1252ExtensionsStart];
                 }
 
@@ -205,7 +208,7 @@ final class Tokeniser {
             if (!found) {
                 reader.rewindToMark();
                 if (looksLegit) // named with semicolon
-                    characterReferenceError("invalid named reference");
+                    characterReferenceError("invalid named reference [%s]", nameRef);
                 return null;
             }
             if (inAttribute && (reader.matchesLetter() || reader.matchesDigit() || reader.matchesAny('=', '-', '_'))) {
@@ -216,7 +219,7 @@ final class Tokeniser {
 
             reader.unmark();
             if (!reader.matchConsume(";"))
-                characterReferenceError("missing semicolon"); // missing semi
+                characterReferenceError("missing semicolon on [&%s]", nameRef); // missing semi
             int numChars = Entities.codepointsForName(nameRef, multipointHolder);
             if (numChars == 1) {
                 codeRef[0] = multipointHolder[0];
@@ -273,24 +276,36 @@ final class Tokeniser {
         return lastStartTag; // could be null
     }
 
+    /** Returns the closer sequence {@code </lastStart} */
+    String appropriateEndTagSeq() {
+        if (lastStartCloseSeq == null) // reset on start tag emit
+            lastStartCloseSeq = "</" + lastStartTag;
+        return lastStartCloseSeq;
+    }
+
     void error(TokeniserState state) {
         if (errors.canAddError())
-            errors.add(new ParseError(reader.pos(), "Unexpected character '%s' in input state [%s]", reader.current(), state));
+            errors.add(new ParseError(reader, "Unexpected character '%s' in input state [%s]", reader.current(), state));
     }
 
     void eofError(TokeniserState state) {
         if (errors.canAddError())
-            errors.add(new ParseError(reader.pos(), "Unexpectedly reached end of file (EOF) in input state [%s]", state));
+            errors.add(new ParseError(reader, "Unexpectedly reached end of file (EOF) in input state [%s]", state));
     }
 
-    private void characterReferenceError(String message) {
+    private void characterReferenceError(String message, Object... args) {
         if (errors.canAddError())
-            errors.add(new ParseError(reader.pos(), "Invalid character reference: %s", message));
+            errors.add(new ParseError(reader, String.format("Invalid character reference: " + message, args)));
     }
 
     void error(String errorMsg) {
         if (errors.canAddError())
-            errors.add(new ParseError(reader.pos(), errorMsg));
+            errors.add(new ParseError(reader, errorMsg));
+    }
+
+    void error(String errorMsg, Object... args) {
+        if (errors.canAddError())
+            errors.add(new ParseError(reader, errorMsg, args));
     }
 
     boolean currentNodeInHtmlNS() {

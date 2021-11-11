@@ -1,6 +1,172 @@
 jsoup changelog
 
-*** Release 1.14.1 [PENDING]
+*** Release 1.15.1 [PENDING]
+  * Change: removed previously deprecated methods and classes (including org.jsoup.safety.Whitelist; use
+    org.jsoup.safety.Safelist instead).
+
+  * Improvement: when converting jsoup Documents to W3C Documents in W3CDom, preserve HTML valid attribute names if the
+    input document is using the HTML syntax. (Previously, would always coerce using the more restrictive XML syntax.)
+    <https://github.com/jhy/jsoup/pull/1648>
+
+  * Improvement: added the :containsWholeText(text) selector, to match against non-normalized Element text. That can be
+    useful when elements can only be distinguished by e.g. specific case, or leading whitespace, etc.
+    <https://github.com/jhy/jsoup/issues/1636>
+
+  * Improvement: when evaluating an XPath query against a context element, the complete document is now visible to the
+    query, vs only the context element's sub-tree. This enables support for queries outside (parent or sibling) the
+    element, e.g. ancestor-or-self::*.
+    <https://github.com/jhy/jsoup/issues/1652>
+
+  * Improvement: allow a maxPaddingWidth on the indent level in OutputSettings when pretty printing. This defaults to
+    30 to limit the indent level for very deeply nested elements, and may be disabled by setting to -1.
+    <https://github.com/jhy/jsoup/pull/1655>
+
+  * Bugfix: boolean attribute names should be case-insensitive, but were not when the parser was configured to preserve
+    case.
+    <https://github.com/jhy/jsoup/issues/1656>
+
+*** Release 1.14.3 [2021-Sep-30]
+  * Improvement: added native XPath support in Element#selectXpath(String)
+    <https://github.com/jhy/jsoup/pull/1629>
+
+  * Improvement: added full support for the <template> tag to the HTML5 parser spec.
+    <https://github.com/jhy/jsoup/issues/1634>
+
+  * Improvement: added support in CharacterReader to track newlines, so that parse errors can be reported more
+    intuitively.
+    <https://github.com/jhy/jsoup/pull/1624>
+
+  * Improvement: tracked parse errors now have more details, including the erroneous token, to help clarify the errors.
+
+  * Improvement: speed and memory optimizations for the :has(subquery) selector.
+
+  * Improvement: the :contains(text) and :containsOwn(text) selectors are now whitespace normalized, aligning to the
+    document text that they are matching against.
+    <https://github.com/jhy/jsoup/issues/876>
+
+  * Improvement: in Element, speed optimized adopting all of an element's child nodes into a currently empty element.
+    Improves the HTML adoption agency algorithm when adopting elements with many children.
+    <https://github.com/jhy/jsoup/issues/1638>
+
+  * Improvement: increased the parse speed when in RCData (e.g. <title>) and unescaped <tag> tokens are found, by
+    memoizing the </title> scan and reducing GC.
+    <https://github.com/jhy/jsoup/issues/1644>
+
+  * Improvement: when parsing custom tags (in HTML or XML), added a flyweight cache on Tag.valueOf(name) to reduce
+    memory overhead when many tags are repeated. Also tuned other areas of the parser when many very deeply stacked
+    custom elements were present.
+    <https://github.com/jhy/jsoup/issues/1646>
+
+  * Bugfix: when tracking errors or checking for validity in the Cleaner, errors were incorrectly raised for missing
+    optional closing tags.
+
+  * Bugfix: the OSGi bundle meta-data incorrectly set a version on the import of javax.annotation (used as a build-time
+    dependency for nullability assertions).
+    <https://github.com/jhy/jsoup/issues/1616>
+
+  * Bugfix: the Attributes::equals() method was sensitive to the order of its contents, but it should not be.
+    <https://github.com/jhy/jsoup/issues/1492>
+
+  * Bugfix: when the HTML parser was configured to preserve case, Element text methods would miss adding whitespace for
+    "BR" tags.
+
+  * Bugfix: attribute names are now normalized & validated correctly for the specific output syntax (HTML or XML).
+    Previously, syntactically invalid attribute names could be output by the html() methods. Such attributes are still
+    available in the DOM, and will be normalized if possible on output.
+    <https://github.com/jhy/jsoup/issues/1474>
+
+  * Bugfix [Fuzz]: fixed an IOOB when an empty select tag was followed by a body tag that needed reparenting.
+    <https://github.com/jhy/jsoup/issues/1639>
+
+  * Build Improvement: fixed nullability annotations for Node.equals(other) and other equals methods.
+    <https://github.com/jhy/jsoup/issues/1628>
+
+  * Build Improvement: added JDK 17 to the CI builds.
+    <https://github.com/jhy/jsoup/pull/1641>
+
+*** Release 1.14.2 [2021-Aug-15]
+  * Improvement: support Pattern.quote \Q and \E escapes in the selector regex matchers.
+    <https://github.com/jhy/jsoup/pull/1536>
+
+  * Improvement: Element.absUrl() now supports tel: URLs, and other URLs that are already absolute but that Java does
+    not have input stream handlers for.
+    <https://github.com/jhy/jsoup/issues/1610>
+
+  * Bugfix: when serializing output, escape characters that are in the < 0x20 range. This improves XML output
+    compatibility, and makes HTML output with these characters easier to read (as they're otherwise invisible).
+    <https://github.com/jhy/jsoup/issues/1556>
+
+  * Bugfix: the *|el wildcard namespace selector now also matches elements with no namespace.
+    <https://github.com/jhy/jsoup/issues/1565>
+    
+  * Bugfix: corrected a potential case of the parser input stream not being closed immediately on a read exception.
+
+  * Bugfix: when making a HTTP POST, if the request write fails, make sure the connection is immediately cleaned up.
+
+  * Bugfix: in the XML parser, XML processing instructions without attributes would be serialized as if they did.
+    <https://github.com/jhy/jsoup/issues/770>
+
+  * Bugfix: updated the HtmlTreeParser resetInsertionMode to the current spec for supported elements.
+    <https://github.com/jhy/jsoup/issues/1491>
+
+  * Bugfix: fixed an NPE when parsing fragment HTML into a standalone table element.
+    <https://github.com/jhy/jsoup/issues/1603>
+
+  * Bugfix: fixed an NPE when parsing fragment heading HTML into a standalone p element.
+    <https://github.com/jhy/jsoup/issues/1601>
+
+  * Bugfix: fixed an IOOB when parsing a formatting fragment into a standalone p element.
+    <https://github.com/jhy/jsoup/issues/1602>
+
+  * Bugfix: tag names must start with an ascii-alpha character.
+    <https://github.com/jhy/jsoup/issues/1006>
+
+  * Bugfix [Fuzz]: fixed a slow parse when a tag or an attribute name has thousands of null characters in it.
+    <https://github.com/jhy/jsoup/issues/1580>
+
+  * Bugfix [Fuzz]: the adoption agency algorithm can have an incorrect bookmark position
+    <https://github.com/jhy/jsoup/issues/1576>
+
+  * Bugfix [Fuzz]: malformed HTML could result in null elements on stack
+    <https://github.com/jhy/jsoup/issues/1579>
+
+  * Bugfix [Fuzz]: malformed deeply nested table elements could create a stack overflow.
+    <https://github.com/jhy/jsoup/issues/1577>
+
+  * Bugfix [Fuzz]: Speed optimized malformed HTML creating elements with thousands of elements - limit the attribute
+    count per element when parsing to 512 (in real-world HTML, P99 is ~ 8).
+    <https://github.com/jhy/jsoup/issues/1578>
+
+  * Bugfix [Fuzz]: Speed improvement for the foster formatting elements algo, by limiting how far up a crafted stack
+    to scan.
+    <https://github.com/jhy/jsoup/issues/1593>
+
+  * Bugfix [Fuzz]: Speed improvement when parsing crafted HTML when transferring form attributes.
+    <https://github.com/jhy/jsoup/issues/1595>
+
+  * Bugfix [Fuzz]: Speed improvement when the stack was thousands of items deep, and non-matching close tags sent.
+    <https://github.com/jhy/jsoup/issues/1596>
+
+  * Bugfix [Fuzz]: Speed improvement when an attribute name is 600K of quote characters or otherwise needs accumulation
+    vs being able to read in one hit.
+    <https://github.com/jhy/jsoup/issues/1605>
+
+  * Bugfix [Fuzz]: Speed improvement when closing missing empty tags (in XML comment processed as HTML) when thousands
+    deep in stack.
+    <https://github.com/jhy/jsoup/issues/1606>
+
+  * Bugfix [Fuzz]: Fix a potential stack-overflow in the parser given crafted HTML, when the parser looped in the
+    InSelectInTable state.
+
+  * Bugfix [Fuzz]: Fix an IOOB when the HTML root was cleared from the stack and then attributes were merged onto it.
+    <https://github.com/jhy/jsoup/issues/1611>
+
+  * Bugfix [Fuzz]: Improved the speed of parsing when crafted HTML contains hundreds of active formatting elements
+    that were copied for all new elements (similar to an amplification attack). The number of considered active
+    formatting elements that will be cloned when mis-nested is now capped to 12.
+    <https://github.com/jhy/jsoup/issues/1613>
+
+*** Release 1.14.1 [2021-Jul-10]
   * Change: updated the minimum supported Java version from Java 7 to Java 8.
 
   * Change: updated the minimum Android API level from 8 to 10.
@@ -12,6 +178,26 @@ jsoup changelog
     such as Element#children(). If you have code that iterates this list and makes parenting changes to its contents,
     you may need to make a code update.
     <https://github.com/jhy/jsoup/issues/1431>
+
+  * Change: the org.jsoup.Connection interface has been modified to introduce new methods for sessions and the cookie
+    store. If you have a custom implementation of this interface, you will need to add implementations of these methods.
+
+  * Improvement: added HTTP request session management support with Jsoup.newSession(). This extends the Connection
+    implementation to support (optional) sessions, which allow request defaults (timeout, proxy, etc) to be set once and
+    then applied to all requests within that session.
+
+    Cookies are re-implemented to correctly support path and domain filtering when used within a session. A default
+    in-memory cookie store is used for the session, or a custom implementation (perhaps disk-persistent, or pre-set)
+    can be used instead.
+
+    Forms submitted using the FormElement#submit() use the same session that was used to fetch the document and so pass
+    cookies and other defaults appropriately.
+
+    The session is multi-thread safe and can execute multiple requests concurrently. If the user accidentally tries to
+    execute the same request object across multiple threads (vs calling Connection#newRequest()),
+    that is detected cleanly and a clear exception is thrown (vs weird blowups in input stream reading, or forcing
+    everything through a synchronized bottleneck.
+    <https://github.com/jhy/jsoup/pull/1476>
 
   * Improvement: renamed the Whitelist class to Safelist, with the goal of more inclusive language. A shim is provided
     for backwards compatibility (source and binary). This shim is marked as deprecated and will be removed in the
@@ -51,12 +237,26 @@ jsoup changelog
   * Improvement: added Element#insertChildren and Elment#prependChildren, as convenience methods in addition to
     Element#insertChildren(index, children), for bulk moving nodes.
 
+  * Improvement: clean up relative URLs with too many .. segments better.
+    <https://github.com/jhy/jsoup/pull/1482>
+
+  * Build Improvement: integrated jsoup into the OSS Fuzz project, which semi-randomly generates millions of different
+    HTML and XML input files, searching for areas to improve in the parser for increased robustness and throughput.
+    <https://github.com/jhy/jsoup/issues/1502>
+
+  * Build Improvement: integrated with GitHub's CodeQL static code analyzer.
+    <https://github.com/jhy/jsoup/pull/1494>
+
   * Build Improvement: moved to GitHub Workflows for build verification.
 
-  * Build Improvement: updated Jetty (used for integration tests; not bundled) to 9.4.35.v2020112.
+  * Build Improvement: updated Jetty (used for integration tests; not bundled) to 9.4.42.
 
   * Build Improvement: added nullability annotations and initial settings.
     <https://github.com/jhy/jsoup/pull/1467>
+
+  * Bugfix: corrected the adoption agency algorithm, to handle cases where e.g. a <a> tag incorrectly nests further <a>
+    tags.
+    <https://github.com/jhy/jsoup/pull/1517> <https://github.com/jhy/jsoup/issues/845>
 
   * Bugfix: when parsing HTML, could throw NPEs on some tags (isindex or table>input).
     <https://github.com/jhy/jsoup/issues/1404>
@@ -96,6 +296,33 @@ jsoup changelog
     <https://github.com/jhy/jsoup/issues/1093>
 
   * Bugfix: if a HTML file ended with an open noscript tag, an "EOF" string would appear in the HTML output.
+
+  * Bugfix: when parsing a document as XML, automatically set the output syntax to XML, and ensure that "<" characters
+    in attributes are escaped as "&lt" (which is not required in HTML as the quoted attribute contents are safe, but is
+    required in XML).
+    <https://github.com/jhy/jsoup/issues/1420>
+
+  * Bugfix: [Fuzz] when parsing an attribute key containing "abs:abs", a validation error would be incorrectly
+    thrown.
+    <https://github.com/jhy/jsoup/issues/1541>
+
+  * Bugfix: [Fuzz] could NPE while parsing in resetInsertionMode().
+    <https://github.com/jhy/jsoup/issues/1538>
+
+  * Bugfix: [Fuzz] when parsing XML, could Stack Overflow when parsing XML declarations.
+    <https://github.com/jhy/jsoup/issues/1539>
+
+  * Bugfix: [Fuzz] fixed a potential Stack Overflow when parsing mis-nested tfoot tags, and updated the tree parser for
+    this situation to match the updated HTML5 spec.
+    <https://github.com/jhy/jsoup/issues/1543>
+
+  * Bugfix: [Fuzz] fixed a potentially slow HTML parse when tags are nested extremely deep (e.g. 88K depth), by limiting
+    the formatting tag search depth to 256. In practice, it's generally between 4 - 8.
+    <https://github.com/jhy/jsoup/issues/1544>
+
+  * Bugfix: [Fuzz] when parsing an unterminated RCDATA token (e.g. a <title> tag), could throw an IO Exception "No
+    buffer left to unconsume" when trying to rewind the buffer.
+    <https://github.com/jhy/jsoup/issues/1542>
 
 *** Release 1.13.1 [2020-Feb-29]
   * Improvement: added Element#closest(selector), which walks up the tree to find the nearest element matching the

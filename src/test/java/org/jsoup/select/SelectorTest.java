@@ -546,7 +546,7 @@ public class SelectorTest {
         assertEquals("2", divs3.get(2).id());
 
         Elements els1 = doc.body().select(":has(p)");
-        assertEquals(3, els1.size()); // body, div, dib
+        assertEquals(3, els1.size()); // body, div, div
         assertEquals("body", els1.first().tagName());
         assertEquals("0", els1.get(1).id());
         assertEquals("2", els1.get(2).id());
@@ -615,6 +615,26 @@ public class SelectorTest {
         Elements ps2 = doc.select("p:contains(this is bad\\))");
         assertEquals(1, ps2.size());
         assertEquals("2", ps2.first().id());
+    }
+
+    @Test void containsWholeText() {
+        Document doc = Jsoup.parse("<div><p> jsoup\n The <i>HTML</i> Parser</p><p>jsoup The HTML Parser</div>");
+        Elements ps = doc.select("p");
+
+        Elements es1 = doc.select("p:containsWholeText( jsoup\n The HTML Parser)");
+        Elements es2 = doc.select("p:containsWholeText(jsoup The HTML Parser)");
+        assertEquals(1, es1.size());
+        assertEquals(1, es2.size());
+        assertEquals(ps.get(0), es1.first());
+        assertEquals(ps.get(1), es2.first());
+
+        assertEquals(0, doc.select("div:containsWholeText(jsoup the html parser)").size());
+        assertEquals(0, doc.select("div:containsWholeText(jsoup\n the html parser)").size());
+
+        doc = Jsoup.parse("<div><p></p><p> </p><p>.  </p>");
+        Elements blanks = doc.select("p:containsWholeText(  )");
+        assertEquals(1, blanks.size());
+        assertEquals(".  ", blanks.first().wholeText());
     }
 
     @MultiLocaleTest
@@ -995,5 +1015,37 @@ public class SelectorTest {
         assertEquals(2, spans.size());
         assertEquals("One Two", spans.get(0).text());
         assertEquals("Three Four", spans.get(1).text());
+    }
+
+    @Test
+    public void wildcardNamespaceMatchesNoNamespace() {
+        // https://github.com/jhy/jsoup/issues/1565
+        String xml = "<package><meta>One</meta><opf:meta>Two</opf:meta></package>";
+        Document doc = Jsoup.parse(xml, "", Parser.xmlParser());
+
+        Elements metaEls = doc.select("meta");
+        assertEquals(1, metaEls.size());
+        assertEquals("One", metaEls.get(0).text());
+
+        Elements nsEls = doc.select("*|meta");
+        assertEquals(2, nsEls.size());
+        assertEquals("One", nsEls.get(0).text());
+        assertEquals("Two", nsEls.get(1).text());
+    }
+
+    @Test void containsTextQueryIsNormalized() {
+        Document doc = Jsoup.parse("<p><p id=1>Hello  there now<em>!</em>");
+        Elements a = doc.select("p:contains(Hello   there  now!)");
+        Elements b = doc.select(":containsOwn(hello   there  now)");
+        Elements c = doc.select("p:contains(Hello there now)");
+        Elements d = doc.select(":containsOwn(hello There now)");
+        Elements e = doc.select("p:contains(HelloThereNow)");
+
+        assertEquals(1, a.size());
+        assertEquals(a, b);
+        assertEquals(a, c);
+        assertEquals(a, d);
+        assertEquals(0, e.size());
+        assertNotEquals(a, e);
     }
 }

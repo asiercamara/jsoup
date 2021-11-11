@@ -6,10 +6,13 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
 
+import javax.annotation.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author Jonathan Hedley
@@ -23,6 +26,7 @@ abstract class TreeBuilder {
     protected String baseUri; // current base uri, for creating new elements
     protected Token currentToken; // currentToken is used only for error tracking.
     protected ParseSettings settings;
+    protected Map<String, Tag> seenTags; // tags we've used in this parse; saves tag GC for custom tags.
 
     private Token.StartTag start = new Token.StartTag(); // start tag to process
     private Token.EndTag end  = new Token.EndTag();
@@ -39,9 +43,11 @@ abstract class TreeBuilder {
         this.parser = parser;
         settings = parser.settings();
         reader = new CharacterReader(input);
+        reader.trackNewlines(parser.isTrackErrors()); // when tracking errors, enable newline tracking for better error reports
         currentToken = null;
         tokeniser = new Tokeniser(reader, parser.getErrors());
         stack = new ArrayList<>(32);
+        seenTags = new HashMap<>();
         this.baseUri = baseUri;
     }
 
@@ -55,6 +61,7 @@ abstract class TreeBuilder {
         reader = null;
         tokeniser = null;
         stack = null;
+        seenTags = null;
 
         return doc;
     }
@@ -109,9 +116,26 @@ abstract class TreeBuilder {
     }
 
 
+    /**
+     Get the current element (last on the stack). If all items have been removed, returns the document instead
+     (which might not actually be on the stack; use stack.size() == 0 to test if required.
+     @return the last element on the stack, if any; or the root document
+     */
     protected Element currentElement() {
         int size = stack.size();
-        return size > 0 ? stack.get(size-1) : null;
+        return size > 0 ? stack.get(size-1) : doc;
+    }
+
+    /**
+     Checks if the Current Element's normal name equals the supplied name.
+     @param normalName name to check
+     @return true if there is a current element on the stack, and its name equals the supplied
+     */
+    protected boolean currentElementIs(String normalName) {
+        if (stack.size() == 0)
+            return false;
+        Element current = currentElement();
+        return current != null && current.normalName().equals(normalName);
     }
 
     /**
@@ -119,9 +143,18 @@ abstract class TreeBuilder {
      * @param msg error message
      */
     protected void error(String msg) {
+        error(msg, (Object[]) null);
+    }
+
+    /**
+     * If the parser is tracking errors, add an error at the current position.
+     * @param msg error message template
+     * @param args template arguments
+     */
+    protected void error(String msg, Object... args) {
         ParseErrorList errors = parser.getErrors();
         if (errors.canAddError())
-            errors.add(new ParseError(reader.pos(), msg));
+            errors.add(new ParseError(reader, msg, args));
     }
 
     /**
@@ -130,5 +163,14 @@ abstract class TreeBuilder {
      */
     protected boolean isContentForTagData(String normalName) {
         return false;
+    }
+
+    protected Tag tagFor(String tagName, ParseSettings settings) {
+        Tag tag = seenTags.get(tagName); // note that we don't normalize the cache key. But tag via valueOf may be normalized.
+        if (tag == null) {
+            tag = Tag.valueOf(tagName, settings);
+            seenTags.put(tagName, tag);
+        }
+        return tag;
     }
 }

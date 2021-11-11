@@ -147,7 +147,10 @@ public class QueryParser {
             else if (tq.matches("["))
                 sq.append("[").append(tq.chompBalanced('[', ']')).append("]");
             else if (tq.matchesAny(combinators))
-                break;
+                if (sq.length() > 0)
+                    break;
+                else
+                    tq.consume();
             else
                 sq.append(tq.consume());
         }
@@ -177,6 +180,8 @@ public class QueryParser {
             contains(false);
         else if (tq.matches(":containsOwn("))
             contains(true);
+        else if (tq.matches(":containsWholeText("))
+            containsWholeText();
         else if (tq.matches(":containsData("))
             containsData();
         else if (tq.matches(":matches("))
@@ -237,7 +242,11 @@ public class QueryParser {
 
         // namespaces: wildcard match equals(tagName) or ending in ":"+tagName
         if (tagName.startsWith("*|")) {
-            evals.add(new CombiningEvaluator.Or(new Evaluator.Tag(tagName), new Evaluator.TagEndsWith(tagName.replace("*|", ":"))));
+            String plainTag = tagName.substring(2); // strip *|
+            evals.add(new CombiningEvaluator.Or(
+                new Evaluator.Tag(plainTag),
+                new Evaluator.TagEndsWith(tagName.replace("*|", ":")))
+            );
         } else {
             // namespaces: if element name is "abc:def", selector must be "abc|def", so flip:
             if (tagName.contains("|"))
@@ -345,7 +354,7 @@ public class QueryParser {
     private void has() {
         tq.consume(":has");
         String subQuery = tq.chompBalanced('(', ')');
-        Validate.notEmpty(subQuery, ":has(el) subselect must not be empty");
+        Validate.notEmpty(subQuery, ":has(selector) subselect must not be empty");
         evals.add(new StructuralEvaluator.Has(parse(subQuery)));
     }
 
@@ -358,6 +367,13 @@ public class QueryParser {
             evals.add(new Evaluator.ContainsOwnText(searchText));
         else
             evals.add(new Evaluator.ContainsText(searchText));
+    }
+
+    private void containsWholeText() {
+        tq.consume(":containsWholeText");
+        String searchText = TokenQueue.unescape(tq.chompBalanced('(', ')'));
+        Validate.notEmpty(searchText, ":containsWholeText(text) query must not be empty");
+        evals.add(new Evaluator.ContainsWholeText(searchText));
     }
 
     // pseudo selector :containsData(data)
